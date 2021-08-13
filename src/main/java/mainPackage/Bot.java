@@ -10,15 +10,12 @@ import org.telegram.telegrambots.meta.TelegramBotsApi;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Bot extends TelegramLongPollingBot {
     public static void main(String[] args) throws IOException {
@@ -45,35 +42,6 @@ public class Bot extends TelegramLongPollingBot {
         return actualBotToken.getToken();
     }
 
-    // Метод для создания клавиатуры
-    public void setButtons(SendMessage sendMessage) {
-        ReplyKeyboardMarkup replyKeyboardMarkup = new ReplyKeyboardMarkup(); // Инициализация клавиатуры
-        sendMessage.setReplyMarkup(replyKeyboardMarkup); // Создание разметки клавиатуры
-        replyKeyboardMarkup.setSelective(true);
-        replyKeyboardMarkup.setResizeKeyboard(true); // Автоматическая подгонка размера клавиатуры
-        replyKeyboardMarkup.setOneTimeKeyboard(false); // Клавиатура не будет скрыта после нажатия кнопки
-
-        List<KeyboardRow> keyboardRowList = new ArrayList<>(); // Список строк (состоящих из кнопок)
-
-        KeyboardRow firstKeyboardRow = new KeyboardRow(); // Создание первой строки клавиатуры
-        KeyboardRow secondKeyboardRow = new KeyboardRow(); // Создание второй строки клавиатуры
-
-        // Добавление кнопок в строки (по 3 кнопки в строке)
-        firstKeyboardRow.add(new KeyboardButton("Россия"));
-        firstKeyboardRow.add(new KeyboardButton("Молдова"));
-        firstKeyboardRow.add(new KeyboardButton("США"));
-
-        secondKeyboardRow.add(new KeyboardButton("Канада"));
-        secondKeyboardRow.add(new KeyboardButton("Испания"));
-
-        // Добавление строк в список строк
-        keyboardRowList.add(firstKeyboardRow);
-        keyboardRowList.add(secondKeyboardRow);
-
-        // Добавление списка строк в клавиатуру
-        replyKeyboardMarkup.setKeyboard(keyboardRowList);
-    }
-
     // Метод для отправки сообщений пользователю
     public void sendMessage(Long chatId, String text) {
         if (!text.isEmpty()) {
@@ -81,7 +49,6 @@ public class Bot extends TelegramLongPollingBot {
             sendMsg.setChatId(chatId.toString());
             sendMsg.setText(text);
             try {
-                setButtons(sendMsg);
                 execute(sendMsg);
             } catch (TelegramApiException e) {
                 e.printStackTrace();
@@ -89,72 +56,77 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
-    // Метод вывода в чат списка доступных стран
-    public void listAllCountries(Long chatId) {
-        String[] countryArray = new String[5];
-        countryArray[0] = "Россия";
-        countryArray[1] = "Молдова";
-        countryArray[2] = "США";
-        countryArray[3] = "Канада";
-        countryArray[4] = "Испания";
-
-        StringBuilder stringBuilder = new StringBuilder();
-
-        SendMessage sendMsg = new SendMessage();
-        sendMsg.setChatId(chatId.toString());
-        for (String s : countryArray) {
-            stringBuilder.append(s);
-            stringBuilder.append("\n");
-        }
-        stringBuilder.trimToSize();
-        sendMsg.setText(stringBuilder.toString());
-        try {
-            execute(sendMsg);
-        } catch (TelegramApiException e) {
-            e.printStackTrace();
-        }
-    }
+    static Map<String, Country> hashMap = new HashMap<>();
 
     // Парсинг источника (WEB-сайта) с помощью библиотеки jsoup
     public static void parseWeb() throws IOException {
-        Document document = Jsoup.connect("https://geo.koltyrin.ru/strany_mira.php").userAgent("Safari").referrer("https://www.google.ru").get();
-        Elements countryInfo = document.select("div.field_center");
-        for (Element element : countryInfo.select("tr")) {
-            System.out.println(element.text());
+        Document document = Jsoup
+                .connect("https://geo.koltyrin.ru/strany_mira.php")
+                .userAgent("Safari")
+                .referrer("https://www.google.ru")
+                .get();
+
+        int i = 0;
+        StringBuilder stringBuilder = new StringBuilder();
+
+        Country country = new Country();
+        Elements countryInfo = document.select("td.list");
+        for (Element element : countryInfo) {
+
+            switch (i) {
+                case 0: {
+                    stringBuilder.append("Страна: ").append(element.text()).append("\n");
+                    i++;
+                    country.setName(element.text());
+                    break;
+                }
+                case 1: {
+                    stringBuilder.append("Столица: ").append(element.text()).append("\n");
+                    i++;
+                    country.setCapital(element.text());
+                    break;
+                }
+                case 2: {
+                    stringBuilder.append("Площадь: ").append(element.text()).append("\n");
+                    i++;
+                    country.setArea(element.text());
+                    break;
+                }
+                case 3: {
+                    stringBuilder.append("Население: ").append(element.text()).append("\n");
+                    i++;
+                    country.setPopulation(element.text());
+                    break;
+                }
+                case 4: {
+                    stringBuilder.append("Континент: ").append(element.text()).append("\n");
+                    stringBuilder.append("\n\n");
+                    country.setContinent(element.text());
+                    hashMap.put(country.getName(), country);
+                    country = new Country();
+                    i = 0;
+                    break;
+                }
+
+            }
         }
+
+        // System.out.println(stringBuilder.toString());
     }
 
     // Метод для приема сообщений
     @Override
     public void onUpdateReceived(Update update) {
         Message message = update.getMessage();
-        switch (message.getText()) {
-            case "/start":
-                sendMessage(message.getChatId(), "Привет! Я - бот-страновед.\n" + "Я готов предоставить вам информацию о выбранной вами стране.\n" +
-                        "Нажмите на название интересующей вас страны на клавиатуре под текстовым полем ввода." +
-                        "Список всех стран доступен по команде /countries");
-                break;
-            case "Россия":
-                sendMessage(message.getChatId(), "Страна: Россия\n" + "Столица: Москва\n" + "Население страны: 146 171 015 чел.\n" + "Площадь страны: 17 125 191 км²");
-                break;
-            case "Молдова":
-                sendMessage(message.getChatId(), "Страна: Молдова\n" + "Столица: Кишинев\n" + "Население страны: 3 550 900 чел.\n" + "Площадь страны: 33 846 км²");
-                break;
-            case "США":
-                sendMessage(message.getChatId(), "Страна: США\n" + "Столица: Вашингтон\n" + "Население страны: 331 216 157 чел.\n" + "Площадь страны: 9 519 431 км²");
-                break;
-            case "Канада":
-                sendMessage(message.getChatId(), "Страна: Канада\n" + "Столица: Оттава\n" + "Население страны: 37 602 103 чел.\n" + "Площадь страны: 9 984 670 км²");
-                break;
-            case "Испания":
-                sendMessage(message.getChatId(), "Страна: Испания\n" + "Столица: Мадрид\n" + "Население страны: 47 351 567 чел.\n" + "Площадь страны: 505 990 км²");
-                break;
-            case "/countries":
-                listAllCountries(message.getChatId());
-                break;
-            default:
-                sendMessage(message.getChatId(), "Пожалуйста, для взаимодействия со мной нажмите на интересующую вас страну на клавиатуре.\n"
-                        + "Со списком всех стран можно ознакомиться с помощью /countries.");
+        if ("/start".equals(message.getText())) {
+            sendMessage(message.getChatId(), "Привет! Я - бот-страновед.\n" + "Я готов предоставить вам информацию об интересующей вас стране.\n" +
+                    "Введите название интересующей вас страны и отправьте мне.");
+        } else {
+            if (!hashMap.containsKey(message.getText())) {
+                sendMessage(message.getChatId(), "О такой стране я ничего не знаю.\nЛибо написание не совпадает с моей базой.");
+            }
+            sendMessage(message.getChatId(), hashMap.get(message.getText()).returnInfo());
         }
+
     }
 }
